@@ -7,7 +7,6 @@ Very lightweight docstring to Markdown converter.
 - [API](#api)
 - [Limitations](#limitations)
 
-
 ### License
 
 Copyright © 2013 Thomas Gläßle <t_glaessle@gmx.de>
@@ -34,17 +33,12 @@ Its purpose is to quickly generate `README.md` files for small projects.
 
 The interface consists of the following functions:
 
- - `doctrim(docstring)`
+ - `make_toc(sections)`
  - `doc2md(docstring, title)`
-
-You can run this script from the command line like:
-
-```bash
-$ doc2md.py [-a] [--no-toc] [-t title] module-name [class-name] > README.md
-```
-
 
 ### Limitations
 
-At the moment  this is suited only  for a very specific use  case. It is
+At the moment  this is suited only  for a very specific use  case (for the resin python sdk). It is
 hardly forseeable, if I will decide to improve on it in the near future.
+
+

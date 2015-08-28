@@ -30,13 +30,8 @@ Its purpose is to quickly generate `README.md` files for small projects.
 
 The interface consists of the following functions:
 
- - `doctrim(docstring)`
+ - `make_toc(sections)`
  - `doc2md(docstring, title)`
-
-You can run this script from the command line like:
-
-$ doc2md.py [-a] [--no-toc] [-t title] module-name [class-name] > README.md
-
 
 ### Limitations
 
@@ -49,6 +44,24 @@ import sys
 import inspect
 
 __all__ = ['doctrim', 'doc2md']
+
+SECTIONS = [
+    'Args:',
+    'Attributes:',
+    'Returns:',
+    'Raises:',
+    'Notes:',
+    'Examples:'
+]
+
+INDENT = "    "
+NEW_LINE = ""
+LINK = '<a name="{name}"></a>'
+
+# Level for each section in class
+CLASS_NAME = 2
+FUNCTION_NAME = 3
+SECTION_NAME = 4
 
 doctrim = inspect.cleandoc
 
@@ -124,20 +137,37 @@ def make_toc(sections):
     """
     if not sections:
         return []
-    outer = min(n for n,t in sections)
     refs = []
-    for ind,sec in sections:
+    for sec, ind in sections:
         ref = sec.lower()
         ref = ref.replace(' ', '-')
         ref = ref.replace('?', '')
-        refs.append("    "*(ind-outer) + "- [%s](#%s)" % (sec, ref))
-    return refs
+        refs.append(INDENT*(ind) + "- [%s](#%s)" % (sec, ref))
+    return '\n'.join(refs)
 
-def _doc2md(lines, shiftlevel=0):
+def _get_class_intro(lines):
+    intro = []
+    contents = lines[:]
+    for line in lines:
+        if line.strip() in SECTIONS:
+            return intro, contents
+        else:
+            contents.pop(0)
+            intro += [line + NEW_LINE]
+    return intro, contents
+
+def _is_class_section(line):
+    line = line.strip()
+    if line in SECTIONS:
+        return SECTION_NAME
+    return 0
+
+def _doc2md(lines):
     md = []
     is_code = False
     for line in lines:
         trimmed = line.lstrip()
+        level = _is_class_section(line)
         if is_code:
             if line:
                 code.append(line)
@@ -153,48 +183,37 @@ def _doc2md(lines, shiftlevel=0):
             is_code = True
             language = 'bash'
             code = [line]
-        elif shiftlevel != 0 and is_heading(line):
-            level, title = get_heading(line)
-            md += [make_heading(level + shiftlevel, title)]
+        elif level > 0:
+            md += [make_heading(level, line)]
         else:
             md += [line]
     if is_code:
         md += doc_code_block(code, language)
     return md
 
-def doc2md(docstr, title, min_level=1, more_info=False, toc=True):
+def doc2md(docstr, title, type=0):
+    # Type = 0 -> class, Type = 1 -> functions
     """
     Convert a docstring to a markdown text.
     """
     text = doctrim(docstr)
     lines = text.split('\n')
-
-    sections = find_sections(lines)
-    if sections:
-        level = min(n for n,t in sections) - 1
-    else:
-        level = 1
-
-    shiftlevel = 0
-    if level < min_level:
-        shiftlevel = min_level - level
-        level = min_level
-        sections = [(lev+shiftlevel, tit) for lev,tit in sections]
-
+    intro, contents = _get_class_intro(lines)
+    if type == 0:
+        level = CLASS_NAME
+        title = LINK.format(name=title.lower())+title
+    if type == 1:
+        level = FUNCTION_NAME
+        title = 'Function: {func_name}'.format(func_name=title)
     md = [
         make_heading(level, title),
-        "",
-        lines.pop(0),
-        ""
+        NEW_LINE
     ]
-    if toc:
-        md += make_toc(sections)
-    md += _doc2md(lines, shiftlevel)
-    if more_info:
-        return (md, sections)
-    else:
-        return "\n".join(md)
+    md += intro
+    md += _doc2md(contents)
+    return "\n".join(md)
 
+# This function is obsolete, shouldn't be used.
 def mod2md(module, title, title_api_section, toc=True):
     """
     Generate markdown document from module, including API section.
@@ -251,60 +270,3 @@ def mod2md(module, title, title_api_section, toc=True):
     md += api_md
 
     return "\n".join(md)
-
-def main(args=None):
-    # parse the program arguments
-    import argparse
-    parser = argparse.ArgumentParser(
-            description='Convert docstrings to markdown.')
-
-    parser.add_argument(
-            'module', help='The module containing the docstring.')
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-            'entry', nargs='?',
-            help='Convert only docstring of this entry in module.')
-    group.add_argument(
-            '-a', '--all', dest='all', action='store_true',
-            help='Create an API section with the contents of module.__all__.')
-    parser.add_argument(
-            '-t', '--title', dest='title',
-            help='Document title (default is module name)')
-    parser.add_argument(
-            '--no-toc', dest='toc', action='store_false', default=True,
-            help='Do not automatically generate the TOC')
-    args = parser.parse_args(args)
-
-    import importlib
-    import inspect
-    import os
-
-    def add_path(*pathes):
-        for path in reversed(pathes):
-            if path not in sys.path:
-                sys.path.insert(0, path)
-
-    file = inspect.getfile(inspect.currentframe())
-    add_path(os.path.realpath(os.path.abspath(os.path.dirname(file))))
-    add_path(os.getcwd())
-
-    mod_name = args.module
-    if mod_name.endswith('.py'):
-        mod_name = mod_name.rsplit('.py', 1)[0]
-    title = args.title or mod_name.replace('_', '-')
-
-    module = importlib.import_module(mod_name)
-
-    if args.all:
-        print(mod2md(module, title, 'API', toc=args.toc))
-
-    else:
-        if args.entry:
-            docstr = module.__dict__[args.entry].__doc__
-        else:
-            docstr = module.__doc__
-
-        print(doc2md(docstr, title, toc=args.toc))
-
-if __name__ == "__main__":
-    main()
